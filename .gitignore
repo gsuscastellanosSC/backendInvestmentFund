@@ -26,3 +26,5 @@ replay_pid*
 
 src/main/resources/application-local.yml
 target/*
+venv/
+loafData.py

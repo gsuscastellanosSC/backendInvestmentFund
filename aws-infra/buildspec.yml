@@ -1,0 +1,29 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      java: corretto21
+  pre_build:
+    commands:
+      - echo "Instalando dependencias y limpiando entorno..."
+      - mvn clean
+  build:
+    commands:
+      - echo "Iniciando compilación del JAR..."
+      - mvn install -DskipTests
+  post_build:
+    commands:
+      - echo "Compilación completada el $(date)"
+      - ls -l target/*.jar
+
+artifacts:
+  files:
+    - target/*.jar
+    - infrastructure/template.yaml
+    - appspec.yml
+  discard-paths: yes
+
+cache:
+  paths:
+    - '/root/.m2/**/*'

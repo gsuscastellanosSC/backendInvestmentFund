@@ -1,0 +1,141 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: BTG Pactual Investment Funds - CI/CD and Infrastructure
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: btg-funds-management
+  Environment:
+    Type: String
+    Default: dev
+  VerifiedEmail:
+    Type: String
+    Default: jesuscastellanospaez@gmail.com
+
+Resources:
+  # 1. Tabla de Clientes
+  CustomersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ${ProjectName}-customers-${Environment}
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  # 2. Tabla de Fondos (FALTA ESTA)
+  FundsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ${ProjectName}-funds-${Environment}
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  # 3. Tabla de Transacciones
+  TransactionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ${ProjectName}-transactions-${Environment}
+      AttributeDefinitions:
+        - AttributeName: transactionId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: transactionId
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+
+  # 4. AWS CodeBuild Project
+  BuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub ${ProjectName}-build
+      ServiceRole: !GetAtt BuildRole.Arn
+      Artifacts:
+        Type: NO_ARTIFACTS
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:5.0
+      Source:
+        Type: GITHUB
+        Location: !Sub https://github.com/jesuscastellanos/backendInvestmentFund.git
+        BuildSpec: aws-infra/buildspec.yml
+      Triggers:
+        Webhook: true
+        FilterGroups:
+          - - Type: EVENT
+              Pattern: PUSH
+
+  BuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CodeBuildPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+
+  # 5. Rol de Aplicación (Añadiendo permiso a la tabla de Fondos)
+  AppExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: FundAppPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                Resource: 
+                  - !GetAtt CustomersTable.Arn
+                  - !GetAtt TransactionsTable.Arn
+                  - !GetAtt FundsTable.Arn
+              - Effect: Allow
+                Action:
+                  - ses:SendEmail
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    "ses:FromAddress": !Ref VerifiedEmail
+
+Outputs:
+  CustomersTableName:
+    Value: !Ref CustomersTable
+  FundsTableName:
+    Value: !Ref FundsTable
+  TransactionsTableName:
+    Value: !Ref TransactionsTable
